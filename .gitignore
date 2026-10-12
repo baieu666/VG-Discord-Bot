@@ -1,0 +1,26 @@
+# Credenciais locais
+.env
+.env.*
+!.env.example
+
+# Dados gerados pelo bot
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-*
+*.sqlite3-*
+*.db-*
+*.log
+logs/
+
+# Python e ambientes virtuais
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
