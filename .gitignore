@@ -1,6 +1,5 @@
 # Credenciais locais
 .env
-env.example
 
 # Dados gerados pelo bot
 *.sqlite
