@@ -11,7 +11,6 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
-
 load_dotenv()
 
 intents = discord.Intents.default()
@@ -590,4 +589,5 @@ if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         raise RuntimeError('Não encontrei o token no arquivo .env')
+    
     bot.run(token)
