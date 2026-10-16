@@ -27,7 +27,7 @@ allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True
 
 @bot.event
 async def on_ready():
-    print(f'Bot conectado como {bot.user}')
+    print(f'Bot conectado como {bot.user} ; by baieu666 xD')
 #endregion
 
 #region ID
@@ -440,7 +440,7 @@ async def evento(ctx):
 
 #endregion
 
-#region MemberJoin/Remove
+#region Eventos de Entrada e Saída
 
 @bot.event
 async def on_member_join(member):
@@ -467,8 +467,7 @@ async def on_member_remove(member):
     print(f'[Servidor {member.guild.id}] {texto_log}')
     await enviar_aviso(member.guild, LOGS_CHANNEL_ID, texto_log)
 
-#endregion
-
+@bot.event
 async def enviar_aviso(guild, canal_id, texto, *, mencoes=None):
     canal = guild.get_channel(canal_id)
     if not isinstance(canal, discord.TextChannel):
@@ -483,6 +482,8 @@ async def enviar_aviso(guild, canal_id, texto, *, mencoes=None):
     except discord.HTTPException as erro:
         print(f'[Eventos] Falha no canal {canal_id}: {erro}')
         return 'não enviado; erro do Discord'
+
+#endregion
 
 #region Categorias
 
@@ -679,7 +680,7 @@ async def on_command_error(ctx, erro):
         print(f'[Erros] Não consegui enviar a resposta: {erro_envio}')
 #endregion
 
-#region Token        
+#region Token
 if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')
     if not token:
