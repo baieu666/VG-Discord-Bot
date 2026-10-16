@@ -1,3 +1,4 @@
+#region Imports
 import os
 import discord
 import random
@@ -10,78 +11,33 @@ from contextlib import closing
 from discord.ext import commands
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+#endregion
 
 load_dotenv()
 
+#region Intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+#endregion
 
-bot = commands.Bot(command_prefix='!', intents=intents, allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=False))
-
-CANAL_BOAS_VINDAS_ID = 1376318643545047040
-LOGS_CHANNEL_ID = 1553817590424404148
-CANAL_SAIDA_ID = 1376319478090170471
-CARGO_AUTOMATICO_ID = 1070059865004855337
-
-async def enviar_aviso(guild, canal_id, texto, *, mencoes=None):
-    canal = guild.get_channel(canal_id)
-    if not isinstance(canal, discord.TextChannel):
-        print(f'[Eventos] Canal {canal_id} ausente ou inválido no servidor {guild.id}.')
-        return 'não enviado; canal ausente ou inválido'
-    try:
-        await canal.send(texto, allowed_mentions=mencoes if mencoes is not None else discord.AllowedMentions.none())
-        return 'enviado'
-    except discord.Forbidden as erro:
-        print(f'[Eventos] Sem permissão no canal {canal_id}: {erro}')
-        return 'não enviado; sem permissão'
-    except discord.HTTPException as erro:
-        print(f'[Eventos] Falha no canal {canal_id}: {erro}')
-        return 'não enviado; erro do Discord'
-
-@bot.event
-async def on_member_join(member):
-    resultado_boas_vindas = await enviar_aviso(member.guild, CANAL_BOAS_VINDAS_ID, f'Seja bem-vindo(a), {member.mention}! Aproveite o servidor.', mencoes=discord.AllowedMentions(users=[member], roles=False, everyone=False, replied_user=False))
-    cargo = member.guild.get_role(CARGO_AUTOMATICO_ID)
-    resultado_cargo = 'não encontrado; confira o ID do cargo'
-    if cargo is not None:
-        try:
-            await member.add_roles(cargo, reason='Cargo automático de entrada')
-            resultado_cargo = f'atribuído: {cargo.name}'
-        except discord.Forbidden:
-            resultado_cargo = 'não atribuído; confira as permissões e a posição dos cargos'
-        except discord.HTTPException as erro:
-            print(f'[Eventos] Falha ao dar cargo ao membro {member.id}: {erro}')
-            resultado_cargo = 'não atribuído; erro do Discord'
-    texto_log = f'📥 Entrou: {member} (ID: {member.id})\nBoas-vindas: {resultado_boas_vindas}\nCargo automático: {resultado_cargo}'
-    print(f'[Servidor {member.guild.id}] {texto_log}')
-    await enviar_aviso(member.guild, LOGS_CHANNEL_ID, texto_log)
-
-@bot.event
-async def on_member_remove(member):
-    resultado_saida = await enviar_aviso(member.guild, CANAL_SAIDA_ID, f'{member.display_name} saiu do servidor. Até mais! 👋')
-    texto_log = f'📤 Saiu: {member} (ID: {member.id})\nAviso de saída: {resultado_saida}'
-    print(f'[Servidor {member.guild.id}] {texto_log}')
-    await enviar_aviso(member.guild, LOGS_CHANNEL_ID, texto_log)
-
-@bot.command(cooldown_after_parsing=True)
-@commands.cooldown(1, 60, commands.BucketType.member)
-@commands.guild_only()
-async def denunciar(ctx, membro: discord.Member, *, motivo):
-    canal_logs = bot.get_channel(LOGS_CHANNEL_ID)
-    if canal_logs is None:
-        await ctx.send('Não encontrei o canal de logs.')
-        return
-    embed = discord.Embed(title='Denúncia recebida', color=discord.Color.orange())
-    embed.add_field(name='Pessoa denunciada', value=membro.mention)
-    embed.add_field(name='Quem denunciou', value=ctx.author.mention)
-    embed.add_field(name='Motivo', value=motivo, inline=False)
-    await canal_logs.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-    await ctx.send('Denúncia enviada para a equipe do servidor.')
+#region botStart
+bot = commands.Bot(command_prefix='!', intents=intents, 
+allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=False))
 
 @bot.event
 async def on_ready():
     print(f'Bot conectado como {bot.user}')
+#endregion
+
+#region ID
+CANAL_BOAS_VINDAS_ID = 1376318643545047040
+LOGS_CHANNEL_ID = 1553817590424404148
+CANAL_SAIDA_ID = 1376319478090170471
+CARGO_AUTOMATICO_ID = 1070059865004855337
+#endregion
+
+#region Normais
 
 @bot.command()
 async def ping(ctx):
@@ -91,27 +47,6 @@ async def ping(ctx):
 async def oi(ctx):
     await ctx.send(f'Salve, {ctx.author.mention}!')
 
-class SeletorAjuda(discord.ui.Select):
-
-    def __init__(self):
-        opcoes = [discord.SelectOption(label='Comandos Normais', value='normal'), discord.SelectOption(label='Comandos Utilitários', value='utilitarios'), discord.SelectOption(label='Comandos de Diversão', value='diversao'), discord.SelectOption(label='Comandos de RPG', value='rpg')]
-        super().__init__(placeholder='Escolha uma categoria...', min_values=1, max_values=1, options=opcoes)
-
-    async def callback(self, interaction: discord.Interaction):
-        listas = {'normal': '**Comandos Normais**\n`!ping` ➔ *Verifica se o bot está funcionando*\n`!oi` ➔ *Cumprimenta o usuário*\n`!eco <mensagem>` ➔ *Repete a mensagem enviada*\n`!avatar [@pessoa]` ➔ *Exibe o avatar do usuário mencionado ou do autor se nenhum for mencionado*\n`!perfil [@pessoa]` ➔ *Exibe informações do perfil do usuário mencionado ou do autor se nenhum for mencionado*\n`!info` ➔ *Exibe informações sobre o bot*\n', 'utilitarios': '**Comandos Utilitários**\n`!ajuda` ➔ *Exibe esta mensagem de ajuda*\n`!servidor` ➔ *Exibe informações sobre o servidor*\n`!limpar <quantidade>` ➔ *Limpa a quantidade especificada de mensagens*\n`!lembrar <minutos> <mensagem>` ➔ *Define um lembrete que será enviado após o tempo especificado*\n`!anunciar <mensagem>` ➔ *Envia um anúncio no canal atual (requer permissão de gerenciar mensagens)*\n`!hora` ➔ *Exibe a hora atual*\n`!enquete <pergunta>` ➔ *Cria uma enquete com a pergunta especificada*\n`!denunciar <@pessoa> <motivo>` ➔ *Envia uma denúncia para o canal de logs do servidor*\n`!slowmode <segundos>` ➔ *Define o modo lento do canal atual (requer permissão de gerenciar canais)*\n`!trancar` ➔ *Tranca o canal atual (requer permissão de gerenciar canais)*\n`!destrancar` ➔ *Destranca o canal atual (requer permissão de gerenciar canais)*\n`!timeout <@pessoa> <minutos> [motivo]` ➔ *Aplica timeout a um membro (requer permissão de moderar membros)*\n', 'diversao': '**Comandos de Diversão**\n`!sortear` ➔ *Sorteia um membro aleatório do servidor*\n`!enquete <pergunta>` ➔ *Cria uma enquete com a pergunta especificada*\n`!jokenpo <pedra/papel/tesoura>` ➔ *Joga jokenpo com o bot (como usar: Dê !jokenpo e escolha entre pedra, papel ou tesoura)*\n`!bola8 <pergunta>` ➔ *Responde a uma pergunta com uma resposta aleatória*\n`!dado <lados>` ➔ *Rola um dado com o número de lados especificado*\n`!escolher <opções separadas por vírgula>` ➔ *Escolhe aleatoriamente entre as opções fornecidas*\n`!calcular <número> <operação> <número>` ➔ *Realiza um cálculo simples*\n', 'rpg': '**Comandos de RPG**\n`!dadorpg <dados>` ➔ *Rola dados no formato de RPG (ex: 2d6+3)*\n`!atributos` ➔ *Gera atributos aleatórios de RPG (Força, Destreza, Constituição, Inteligência, Sabedoria, Carisma)*\n`!modificador <pontuação>` ➔ *Calcula o modificador de atributo com base na pontuação fornecida*\n`!iniciativa [bônus]` ➔ *Rola iniciativa*\n`!teste <CD> [bônus]` ➔ *Faz um teste de RPG*\n`!dano <dados>` ➔ *Rola dano, exemplo: `!dano 1d8+3`*\n`!vantagem` ➔ *Rola dois d20 e fica com o maior*\n`!desvantagem` ➔ *Rola dois d20 e fica com o menor*\n`!cura <dados>` ➔ *Rola cura, exemplo: `!cura 2d8+3`*\n`!resistencia [bônus]` ➔ *Rola teste de resistência, exemplo: `!resistencia 2`*\n`!npc` ➔ *Gera um NPC aleatório com nome, raça, profissão e traço de personalidade*\n`!tesouro` ➔ *Encontra um tesouro aleatório com itens e moedas*\n`!missao` ➔ *Gera uma missão aleatória com objetivos, locais e complicações*\n`!monstro` ➔ *Gera um monstro aleatório com estatísticas*\n`!evento` ➔ *Gera um evento aleatório para a aventura*\n'}
-        categoria = self.values[0]
-        await interaction.response.edit_message(content=listas[categoria], view=self.view)
-
-class MenuAjuda(discord.ui.View):
-
-    def __init__(self):
-        super().__init__(timeout=180)
-        self.add_item(SeletorAjuda())
-
-@bot.command()
-async def ajuda(ctx):
-    await ctx.send('Escolha uma categoria para ver os comandos que o VG oferece:', view=MenuAjuda())
-
 @bot.command()
 async def eco(ctx, *, mensagem):
     await ctx.send(mensagem)
@@ -119,18 +54,6 @@ async def eco(ctx, *, mensagem):
 @bot.command()
 async def info(ctx):
     await ctx.send('Eu sou um bot que tem o intuito de auxiliar o Esgoto do Ratão.\nDeveloped by: baieu666\nVersão: 1.0.0')
-
-@bot.command()
-@commands.has_permissions(manage_messages=True)
-@commands.bot_has_permissions(manage_messages=True)
-async def limpar(ctx, quantidade: int):
-    if quantidade < 1 or quantidade > 100:
-        await ctx.reply('Escolha um número entre 1 e 100 para limpar as mensagens.')
-        return
-    await ctx.message.delete()
-    apagas = await ctx.channel.purge(limit=quantidade)
-    unidade = 'mensagem' if len(apagas) == 1 else 'mensagens'
-    await ctx.send(f'Apaguei {len(apagas)} {unidade}.', delete_after=5)
 
 @bot.command()
 async def avatar(ctx, membro: discord.Member=None):
@@ -148,6 +71,144 @@ async def perfil(ctx, membro: discord.Member | None=None):
     embed.add_field(name='Entrou no servidor', value=entrou)
     embed.set_thumbnail(url=membro.display_avatar.url)
     await ctx.send(embed=embed)
+
+@bot.command()
+@commands.guild_only()
+async def servidor(ctx):
+    servidor = ctx.guild
+    embed = discord.Embed(title=f'Sobre {servidor.name}', color=discord.Color.blurple())
+    embed.add_field(name='Membros', value=servidor.member_count or 'Indisponível', inline=True)
+    embed.add_field(name='Criado em', value=discord.utils.format_dt(servidor.created_at, style='D'), inline=True)
+    if servidor.icon:
+        embed.set_thumbnail(url=servidor.icon.url)
+    await ctx.send(embed=embed)
+
+#endregion
+
+#region Utilitários
+
+@bot.command()
+async def ajuda(ctx):
+    await ctx.send('Escolha uma categoria para ver os comandos que o VG oferece:', view=MenuAjuda())
+
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+@commands.bot_has_permissions(manage_messages=True)
+async def limpar(ctx, quantidade: int):
+    if quantidade < 1 or quantidade > 100:
+        await ctx.reply('Escolha um número entre 1 e 100 para limpar as mensagens.')
+        return
+    await ctx.message.delete()
+    apagas = await ctx.channel.purge(limit=quantidade)
+    unidade = 'mensagem' if len(apagas) == 1 else 'mensagens'
+    await ctx.send(f'Apaguei {len(apagas)} {unidade}.', delete_after=5)
+
+@bot.command()
+async def lembrar(ctx, minutos: int, *, mensagem: str):
+    if minutos < 1 or minutos > 1440:
+        await ctx.reply('Escolha um tempo entre 1 minuto e 24 horas.')
+        return
+    await ctx.send(f'⏰ Beleza, vou te lembrar em {minutos} minuto(s).')
+    await asyncio.sleep(minutos * 60)
+    await ctx.send(f'{ctx.author.mention}, lembrete: **{mensagem}**')
+
+@bot.command()
+@commands.guild_only()
+@commands.has_guild_permissions(manage_messages=True)
+async def anunciar(ctx, *, texto: str):
+    embed = discord.Embed(title='📢 Aviso da moderação', description=texto, color=discord.Color.gold())
+    embed.set_footer(text=f'Enviado por {ctx.author.display_name}')
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def hora(ctx):
+    agora = datetime.now().strftime('%H:%M:%S')
+    await ctx.send(f'🕒 Agora são **{agora}**.')
+
+@bot.command(cooldown_after_parsing=True)
+@commands.cooldown(1, 30, commands.BucketType.channel)
+async def enquete(ctx, *, pergunta: str):
+    mensagem = await ctx.send(f'📊 **Enquete:** {pergunta}')
+    await mensagem.add_reaction('👍')
+    await mensagem.add_reaction('👎')
+
+@bot.command(cooldown_after_parsing=True)
+@commands.cooldown(1, 60, commands.BucketType.member)
+@commands.guild_only()
+async def denunciar(ctx, membro: discord.Member, *, motivo):
+    canal_logs = bot.get_channel(LOGS_CHANNEL_ID)
+    if canal_logs is None:
+        await ctx.send('Não encontrei o canal de logs.')
+        return
+    embed = discord.Embed(title='Denúncia recebida', color=discord.Color.orange())
+    embed.add_field(name='Pessoa denunciada', value=membro.mention)
+    embed.add_field(name='Quem denunciou', value=ctx.author.mention)
+    embed.add_field(name='Motivo', value=motivo, inline=False)
+    await canal_logs.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+    await ctx.send('Denúncia enviada para a equipe do servidor.')
+
+@bot.command()
+@commands.guild_only()
+async def slowmode(ctx, segundos: int):
+    if not ctx.author.guild_permissions.manage_channels:
+        await ctx.reply('Você precisa da permissão **Gerenciar canais**.')
+        return
+    permissoes_bot = ctx.channel.permissions_for(ctx.guild.me)
+    if not permissoes_bot.manage_channels:
+        await ctx.reply('Eu preciso da permissão **Gerenciar canais**.')
+        return
+    if segundos < 0 or segundos > 21600:
+        await ctx.reply('Use um valor entre 0 e 21600 segundos.')
+        return
+    try:
+        await ctx.channel.edit(slowmode_delay=segundos)
+        if segundos == 0:
+            await ctx.send('🔓 Modo lento desativado neste canal.')
+        else:
+            await ctx.send(f'🐢 Modo lento ativado: **{segundos} segundos** entre mensagens.')
+    except discord.Forbidden:
+        await ctx.reply('Não tenho permissão para alterar este canal.')
+    except discord.HTTPException:
+        await ctx.reply('O Discord não conseguiu alterar o modo lento.')
+
+@bot.command()
+@commands.guild_only()
+async def timeout(ctx, membro: discord.Member, minutos: int, *, motivo: str='Não informado'):
+    if not ctx.author.guild_permissions.moderate_members:
+        await ctx.reply('Você precisa da permissão **Moderar membros**.')
+        return
+    if not ctx.guild.me.guild_permissions.moderate_members:
+        await ctx.reply('Eu preciso da permissão **Moderar membros**.')
+        return
+    if membro.id == ctx.author.id or membro.id == bot.user.id:
+        await ctx.reply('Você não pode aplicar timeout em si mesmo ou no bot.')
+        return
+    if membro.id == ctx.guild.owner_id:
+        await ctx.reply('Não posso aplicar timeout no dono do servidor.')
+        return
+    if membro.guild_permissions.administrator:
+        await ctx.reply('Não posso aplicar timeout em alguém com a permissão Administrador.')
+        return
+    if membro.top_role >= ctx.guild.me.top_role:
+        await ctx.reply('O cargo mais alto desse membro precisa estar abaixo do meu.')
+        return
+    if ctx.author.id != ctx.guild.owner_id and membro.top_role >= ctx.author.top_role:
+        await ctx.reply('Você só pode aplicar timeout em membros com cargo abaixo do seu.')
+        return
+    if minutos < 1 or minutos > 40320:
+        await ctx.reply('Escolha uma duração entre 1 minuto e 28 dias.')
+        return
+    try:
+        await membro.timeout(timedelta(minutes=minutos), reason=f'Aplicado por {ctx.author}: {motivo}')
+        await ctx.send(f'🔇 {membro.mention} recebeu timeout por **{minutos} minuto(s)**. Motivo: {motivo}')
+    except discord.Forbidden:
+        await ctx.reply('Não consegui aplicar o timeout. Confira as permissões e a posição dos cargos.')
+    except discord.HTTPException:
+        await ctx.reply('O Discord não conseguiu aplicar o timeout.')
+
+#endregion
+
+#region Diversão
 
 @bot.command(cooldown_after_parsing=True)
 @commands.cooldown(1, 10, commands.BucketType.guild)
@@ -171,12 +232,65 @@ async def sortear(ctx):
     await ctx.send(f'🎉 A pessoa sorteada foi {sorteado.mention}!')
 
 @bot.command()
+async def jokenpo(ctx, escolha: str):
+    escolha = escolha.lower()
+    opcoes = ['pedra', 'papel', 'tesoura']
+    if escolha not in opcoes:
+        await ctx.reply('Escolha pedra, papel ou tesoura.')
+        return
+    bot_escolheu = random.choice(opcoes)
+    if escolha == bot_escolheu:
+        resultado = 'Empate!'
+    elif escolha == 'pedra' and bot_escolheu == 'tesoura' or (escolha == 'papel' and bot_escolheu == 'pedra') or (escolha == 'tesoura' and bot_escolheu == 'papel'):
+        resultado = 'Você ganhou!'
+    else:
+        resultado = 'Eu ganhei!'
+    await ctx.send(f'Você: **{escolha}** | Eu: **{bot_escolheu}**\n{resultado}')
+
+@bot.command()
+async def bola8(ctx, *, pergunta: str):
+    respostas = ['Com certeza!', 'É bem provável.', 'As chances são boas.', 'Melhor perguntar de novo.', 'Não conte com isso.', 'Provavelmente não.', 'Com certeza não!']
+    resposta = random.choice(respostas)
+    await ctx.send(f'🎱 **{ctx.author.display_name} perguntou:** {pergunta}\n**Resposta:** {resposta}')
+
+@bot.command()
 async def dado(ctx, lados: int=6):
     if lados < 2 or lados > 100:
         await ctx.reply('Escolha um dado de 2 a 100 lados.')
         return
     resultado = random.randint(1, lados)
     await ctx.send(f'🎲 O dado de {lados} lados caiu em **{resultado}**!')
+
+@bot.command()
+async def escolher(ctx, *, texto: str):
+    opcoes = [opcao.strip() for opcao in texto.split(',') if opcao.strip()]
+    if len(opcoes) < 2:
+        await ctx.reply('Mande pelo menos duas opções, separadas por `,`.')
+        return
+    escolhido = random.choice(opcoes)
+    await ctx.send(f'🤔 Eu escolheria: **{escolhido}**')
+
+@bot.command()
+async def calcular(ctx, numero1: float, operacao: str, numero2: float):
+    if operacao == '+':
+        resultado = numero1 + numero2
+    elif operacao == '-':
+        resultado = numero1 - numero2
+    elif operacao in ('*', 'x'):
+        resultado = numero1 * numero2
+    elif operacao == '/':
+        if numero2 == 0:
+            await ctx.reply('Não dá para dividir por zero.')
+            return
+        resultado = numero1 / numero2
+    else:
+        await ctx.reply('Use uma operação: `+`, `-`, `*` ou `/`.')
+        return
+    await ctx.send(f'🧮 {numero1:g} {operacao} {numero2:g} = **{resultado:g}**')
+
+#endregion
+
+#region RPG
 
 @bot.command()
 async def dadorpg(ctx, notacao: str='1d6'):
@@ -198,95 +312,6 @@ async def dadorpg(ctx, notacao: str='1d6'):
     elif modificador < 0:
         detalhes += f' - {abs(modificador)}'
     await ctx.send(f'🎲 Rolagem `{notacao}`: **{total}** (`{detalhes}`)')
-
-@bot.command(cooldown_after_parsing=True)
-@commands.cooldown(1, 30, commands.BucketType.channel)
-async def enquete(ctx, *, pergunta: str):
-    mensagem = await ctx.send(f'📊 **Enquete:** {pergunta}')
-    await mensagem.add_reaction('👍')
-    await mensagem.add_reaction('👎')
-
-@bot.command()
-async def jokenpo(ctx, escolha: str):
-    escolha = escolha.lower()
-    opcoes = ['pedra', 'papel', 'tesoura']
-    if escolha not in opcoes:
-        await ctx.reply('Escolha pedra, papel ou tesoura.')
-        return
-    bot_escolheu = random.choice(opcoes)
-    if escolha == bot_escolheu:
-        resultado = 'Empate!'
-    elif escolha == 'pedra' and bot_escolheu == 'tesoura' or (escolha == 'papel' and bot_escolheu == 'pedra') or (escolha == 'tesoura' and bot_escolheu == 'papel'):
-        resultado = 'Você ganhou!'
-    else:
-        resultado = 'Eu ganhei!'
-    await ctx.send(f'Você: **{escolha}** | Eu: **{bot_escolheu}**\n{resultado}')
-
-@bot.command()
-@commands.guild_only()
-async def servidor(ctx):
-    servidor = ctx.guild
-    embed = discord.Embed(title=f'Sobre {servidor.name}', color=discord.Color.blurple())
-    embed.add_field(name='Membros', value=servidor.member_count or 'Indisponível', inline=True)
-    embed.add_field(name='Criado em', value=discord.utils.format_dt(servidor.created_at, style='D'), inline=True)
-    if servidor.icon:
-        embed.set_thumbnail(url=servidor.icon.url)
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def lembrar(ctx, minutos: int, *, mensagem: str):
-    if minutos < 1 or minutos > 1440:
-        await ctx.reply('Escolha um tempo entre 1 minuto e 24 horas.')
-        return
-    await ctx.send(f'⏰ Beleza, vou te lembrar em {minutos} minuto(s).')
-    await asyncio.sleep(minutos * 60)
-    await ctx.send(f'{ctx.author.mention}, lembrete: **{mensagem}**')
-
-@bot.command()
-@commands.guild_only()
-@commands.has_guild_permissions(manage_messages=True)
-async def anunciar(ctx, *, texto: str):
-    embed = discord.Embed(title='📢 Aviso da moderação', description=texto, color=discord.Color.gold())
-    embed.set_footer(text=f'Enviado por {ctx.author.display_name}')
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def bola8(ctx, *, pergunta: str):
-    respostas = ['Com certeza!', 'É bem provável.', 'As chances são boas.', 'Melhor perguntar de novo.', 'Não conte com isso.', 'Provavelmente não.', 'Com certeza não!']
-    resposta = random.choice(respostas)
-    await ctx.send(f'🎱 **{ctx.author.display_name} perguntou:** {pergunta}\n**Resposta:** {resposta}')
-
-@bot.command()
-async def escolher(ctx, *, texto: str):
-    opcoes = [opcao.strip() for opcao in texto.split(',') if opcao.strip()]
-    if len(opcoes) < 2:
-        await ctx.reply('Mande pelo menos duas opções, separadas por `,`.')
-        return
-    escolhido = random.choice(opcoes)
-    await ctx.send(f'🤔 Eu escolheria: **{escolhido}**')
-
-@bot.command()
-async def hora(ctx):
-    agora = datetime.now().strftime('%H:%M:%S')
-    await ctx.send(f'🕒 Agora são **{agora}**.')
-
-@bot.command()
-async def calcular(ctx, numero1: float, operacao: str, numero2: float):
-    if operacao == '+':
-        resultado = numero1 + numero2
-    elif operacao == '-':
-        resultado = numero1 - numero2
-    elif operacao in ('*', 'x'):
-        resultado = numero1 * numero2
-    elif operacao == '/':
-        if numero2 == 0:
-            await ctx.reply('Não dá para dividir por zero.')
-            return
-        resultado = numero1 / numero2
-    else:
-        await ctx.reply('Use uma operação: `+`, `-`, `*` ou `/`.')
-        return
-    await ctx.send(f'🧮 {numero1:g} {operacao} {numero2:g} = **{resultado:g}**')
 
 @bot.command()
 async def atributos(ctx):
@@ -413,29 +438,125 @@ async def evento(ctx):
     eventos = ['o grupo encontra pegadas recentes no caminho', 'uma tempestade começa de repente', 'um viajante pede ajuda', 'um objeto estranho começa a brilhar', 'o grupo ouve um barulho vindo de perto', 'uma ponte bloqueia o caminho']
     await ctx.send(f'🎲 **Evento da aventura:** {random.choice(eventos)}.')
 
-@bot.command()
-@commands.guild_only()
-async def slowmode(ctx, segundos: int):
-    if not ctx.author.guild_permissions.manage_channels:
-        await ctx.reply('Você precisa da permissão **Gerenciar canais**.')
-        return
-    permissoes_bot = ctx.channel.permissions_for(ctx.guild.me)
-    if not permissoes_bot.manage_channels:
-        await ctx.reply('Eu preciso da permissão **Gerenciar canais**.')
-        return
-    if segundos < 0 or segundos > 21600:
-        await ctx.reply('Use um valor entre 0 e 21600 segundos.')
-        return
+#endregion
+
+#region MemberJoin/Remove
+
+@bot.event
+async def on_member_join(member):
+    resultado_boas_vindas = await enviar_aviso(member.guild, CANAL_BOAS_VINDAS_ID, f'Seja bem-vindo(a), {member.mention}! Aproveite o servidor.', mencoes=discord.AllowedMentions(users=[member], roles=False, everyone=False, replied_user=False))
+    cargo = member.guild.get_role(CARGO_AUTOMATICO_ID)
+    resultado_cargo = 'não encontrado; confira o ID do cargo'
+    if cargo is not None:
+        try:
+            await member.add_roles(cargo, reason='Cargo automático de entrada')
+            resultado_cargo = f'atribuído: {cargo.name}'
+        except discord.Forbidden:
+            resultado_cargo = 'não atribuído; confira as permissões e a posição dos cargos'
+        except discord.HTTPException as erro:
+            print(f'[Eventos] Falha ao dar cargo ao membro {member.id}: {erro}')
+            resultado_cargo = 'não atribuído; erro do Discord'
+    texto_log = f'📥 Entrou: {member} (ID: {member.id})\nBoas-vindas: {resultado_boas_vindas}\nCargo automático: {resultado_cargo}'
+    print(f'[Servidor {member.guild.id}] {texto_log}')
+    await enviar_aviso(member.guild, LOGS_CHANNEL_ID, texto_log)
+
+@bot.event
+async def on_member_remove(member):
+    resultado_saida = await enviar_aviso(member.guild, CANAL_SAIDA_ID, f'{member.display_name} saiu do servidor. Até mais! 👋')
+    texto_log = f'📤 Saiu: {member} (ID: {member.id})\nAviso de saída: {resultado_saida}'
+    print(f'[Servidor {member.guild.id}] {texto_log}')
+    await enviar_aviso(member.guild, LOGS_CHANNEL_ID, texto_log)
+
+#endregion
+
+async def enviar_aviso(guild, canal_id, texto, *, mencoes=None):
+    canal = guild.get_channel(canal_id)
+    if not isinstance(canal, discord.TextChannel):
+        print(f'[Eventos] Canal {canal_id} ausente ou inválido no servidor {guild.id}.')
+        return 'não enviado; canal ausente ou inválido'
     try:
-        await ctx.channel.edit(slowmode_delay=segundos)
-        if segundos == 0:
-            await ctx.send('🔓 Modo lento desativado neste canal.')
-        else:
-            await ctx.send(f'🐢 Modo lento ativado: **{segundos} segundos** entre mensagens.')
-    except discord.Forbidden:
-        await ctx.reply('Não tenho permissão para alterar este canal.')
-    except discord.HTTPException:
-        await ctx.reply('O Discord não conseguiu alterar o modo lento.')
+        await canal.send(texto, allowed_mentions=mencoes if mencoes is not None else discord.AllowedMentions.none())
+        return 'enviado'
+    except discord.Forbidden as erro:
+        print(f'[Eventos] Sem permissão no canal {canal_id}: {erro}')
+        return 'não enviado; sem permissão'
+    except discord.HTTPException as erro:
+        print(f'[Eventos] Falha no canal {canal_id}: {erro}')
+        return 'não enviado; erro do Discord'
+
+#region Categorias
+
+class MenuAjuda(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(timeout=180)
+        self.add_item(SeletorAjuda())
+
+class SeletorAjuda(discord.ui.Select):
+
+    def __init__(self):
+        opcoes = [discord.SelectOption(label='Comandos Normais', value='normal'), discord.SelectOption(label='Comandos Utilitários', value='utilitarios'), discord.SelectOption(label='Comandos de Diversão', value='diversao'), discord.SelectOption(label='Comandos de RPG', value='rpg')]
+        super().__init__(placeholder='Escolha uma categoria...', min_values=1, max_values=1, options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        listas = {
+'normal':
+'**Comandos Normais**\n'
+'`!ping` ➔ *Verifica se o bot está funcionando*\n'
+'`!oi` ➔ *Cumprimenta o usuário*\n'
+'`!eco <mensagem>` ➔ *Repete a mensagem enviada*\n'
+'`!avatar [@pessoa]` ➔ *Exibe o avatar do usuário mencionado ou do autor se nenhum for mencionado*\n'
+'`!perfil [@pessoa]` ➔ *Exibe informações do perfil do usuário mencionado ou do autor se nenhum for mencionado*\n'
+'`!info` ➔ *Exibe informações sobre o bot*\n'
+'`!servidor` ➔ *Exibe informações sobre o servidor*\n'
+
+'', 'utilitarios': 
+'**Comandos Utilitários**\n'
+'`!ajuda` ➔ *Exibe esta mensagem de ajuda*\n`!servidor` ➔ *Exibe informações sobre o servidor*\n'
+'`!limpar <quantidade>` ➔ *Limpa a quantidade especificada de mensagens*\n'
+'`!lembrar <minutos> <mensagem>` ➔ *Define um lembrete que será enviado após o tempo especificado*\n'
+'`!anunciar <mensagem>` ➔ *Envia um anúncio no canal atual (requer permissão de gerenciar mensagens)*\n'
+'`!hora` ➔ *Exibe a hora atual*\n'
+'`!enquete <pergunta>` ➔ *Cria uma enquete com a pergunta especificada*\n'
+'`!denunciar <@pessoa> <motivo>` ➔ *Envia uma denúncia para o canal de logs do servidor*\n'
+'`!slowmode <segundos>` ➔ *Define o modo lento do canal atual (requer permissão de gerenciar canais)*\n'
+'`!trancar` ➔ *Tranca o canal atual (requer permissão de gerenciar canais)*\n'
+'`!destrancar` ➔ *Destranca o canal atual (requer permissão de gerenciar canais)*\n'
+'`!timeout <@pessoa> <minutos> [motivo]` ➔ *Aplica timeout a um membro (requer permissão de moderar membros)*\n'
+
+'', 'diversao': 
+'**Comandos de Diversão**\n'
+'`!sortear` ➔ *Sorteia um membro aleatório do servidor*\n'
+'`!jokenpo <pedra/papel/tesoura>` ➔ *Joga jokenpo com o bot (como usar: Dê !jokenpo e escolha entre pedra, papel ou tesoura)*\n'
+'`!bola8 <pergunta>` ➔ *Responde a uma pergunta com uma resposta aleatória*\n'
+'`!dado <lados>` ➔ *Rola um dado com o número de lados especificado*\n'
+'`!escolher <opções separadas por vírgula>` ➔ *Escolhe aleatoriamente entre as opções fornecidas*\n'
+'`!calcular <número> <operação> <número>` ➔ *Realiza um cálculo simples*\n'
+
+'', 'rpg': 
+'**Comandos de RPG**\n'
+'`!dadorpg <dados>` ➔ *Rola dados no formato de RPG (ex: 2d6+3)*\n'
+'`!atributos` ➔ *Gera atributos aleatórios de RPG (Força, Destreza, Constituição, Inteligência, Sabedoria, Carisma)*\n'
+'`!modificador <pontuação>` ➔ *Calcula o modificador de atributo com base na pontuação fornecida*\n'
+'`!iniciativa [bônus]` ➔ *Rola iniciativa*\n'
+'`!teste <CD> [bônus]` ➔ *Faz um teste de RPG*\n'
+'`!dano <dados>` ➔ *Rola dano, exemplo: `!dano 1d8+3`*\n'
+'`!vantagem` ➔ *Rola dois d20 e fica com o maior*\n'
+'`!desvantagem` ➔ *Rola dois d20 e fica com o menor*\n'
+'`!cura <dados>` ➔ *Rola cura, exemplo: `!cura 2d8+3`*\n'
+'`!resistencia [bônus]` ➔ *Rola teste de resistência, exemplo: `!resistencia 2`*\n'
+'`!npc` ➔ *Gera um NPC aleatório com nome, raça, profissão e traço de personalidade*\n'
+'`!tesouro` ➔ *Encontra um tesouro aleatório com itens e moedas*\n'
+'`!missao` ➔ *Gera uma missão aleatória com objetivos, locais e complicações*\n'
+'`!monstro` ➔ *Gera um monstro aleatório com estatísticas*\n'
+'`!evento` ➔ *Gera um evento aleatório para a aventura*\n'
+}
+        categoria = self.values[0]
+        await interaction.response.edit_message(content=listas[categoria], view=self.view)
+#endregion
+
+#region Trancar/Destrancar
+
 ARQUIVO_BLOQUEIOS = Path(__file__).resolve().with_name('bloqueios.sqlite3')
 travas_bloqueios = {}
 
@@ -505,41 +626,12 @@ async def trancar(ctx):
 async def destrancar(ctx):
     await alterar_bloqueio(ctx, False)
 
-@bot.command()
-@commands.guild_only()
-async def timeout(ctx, membro: discord.Member, minutos: int, *, motivo: str='Não informado'):
-    if not ctx.author.guild_permissions.moderate_members:
-        await ctx.reply('Você precisa da permissão **Moderar membros**.')
-        return
-    if not ctx.guild.me.guild_permissions.moderate_members:
-        await ctx.reply('Eu preciso da permissão **Moderar membros**.')
-        return
-    if membro.id == ctx.author.id or membro.id == bot.user.id:
-        await ctx.reply('Você não pode aplicar timeout em si mesmo ou no bot.')
-        return
-    if membro.id == ctx.guild.owner_id:
-        await ctx.reply('Não posso aplicar timeout no dono do servidor.')
-        return
-    if membro.guild_permissions.administrator:
-        await ctx.reply('Não posso aplicar timeout em alguém com a permissão Administrador.')
-        return
-    if membro.top_role >= ctx.guild.me.top_role:
-        await ctx.reply('O cargo mais alto desse membro precisa estar abaixo do meu.')
-        return
-    if ctx.author.id != ctx.guild.owner_id and membro.top_role >= ctx.author.top_role:
-        await ctx.reply('Você só pode aplicar timeout em membros com cargo abaixo do seu.')
-        return
-    if minutos < 1 or minutos > 40320:
-        await ctx.reply('Escolha uma duração entre 1 minuto e 28 dias.')
-        return
-    try:
-        await membro.timeout(timedelta(minutes=minutos), reason=f'Aplicado por {ctx.author}: {motivo}')
-        await ctx.send(f'🔇 {membro.mention} recebeu timeout por **{minutos} minuto(s)**. Motivo: {motivo}')
-    except discord.Forbidden:
-        await ctx.reply('Não consegui aplicar o timeout. Confira as permissões e a posição dos cargos.')
-    except discord.HTTPException:
-        await ctx.reply('O Discord não conseguiu aplicar o timeout.')
-NOMES_PERMISSOES = {'manage_messages': 'Gerenciar mensagens', 'manage_roles': 'Gerenciar cargos', 'manage_channels': 'Gerenciar canais', 'moderate_members': 'Moderar membros', 'send_messages': 'Enviar mensagens', 'view_channel': 'Ver canal', 'read_message_history': 'Ler histórico de mensagens', 'embed_links': 'Inserir links'}
+#endregion
+
+#region Tratamento de Erros no Geral
+NOMES_PERMISSOES = {
+    'manage_messages': 'Gerenciar mensagens', 'manage_roles': 'Gerenciar cargos', 'manage_channels': 'Gerenciar canais', 'moderate_members': 'Moderar membros', 'send_messages': 'Enviar mensagens', 'view_channel': 'Ver canal', 'read_message_history': 'Ler histórico de mensagens', 'embed_links': 'Inserir links' 
+ }
 
 @bot.event
 async def on_command_error(ctx, erro):
@@ -585,9 +677,13 @@ async def on_command_error(ctx, erro):
         await ctx.reply(mensagem, mention_author=False, allowed_mentions=discord.AllowedMentions.none())
     except discord.HTTPException as erro_envio:
         print(f'[Erros] Não consegui enviar a resposta: {erro_envio}')
+#endregion
+
+#region Token        
 if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         raise RuntimeError('Não encontrei o token no arquivo .env')
     
     bot.run(token)
+#endregion
