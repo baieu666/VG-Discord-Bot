@@ -1,4 +1,5 @@
 #region Imports
+
 import os
 import discord
 import random
@@ -6,35 +7,62 @@ import re
 import asyncio
 import sqlite3
 import traceback
+from urllib.parse import quote
 from pathlib import Path
 from contextlib import closing
 from discord.ext import commands
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 #endregion
 
 load_dotenv()
 
 #region Intents
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+
 #endregion
 
 #region botStart
+
 bot = commands.Bot(command_prefix='!', intents=intents, 
 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=False))
 
 @bot.event
 async def on_ready():
     print(f'Bot conectado como {bot.user} ; by baieu666 xD')
+
 #endregion
 
 #region ID
+
 CANAL_BOAS_VINDAS_ID = 1376318643545047040
 LOGS_CHANNEL_ID = 1553817590424404148
 CANAL_SAIDA_ID = 1376319478090170471
 CARGO_AUTOMATICO_ID = 1070059865004855337
+
+#endregion
+
+#region Validação de Textos
+
+async def validar_texto(ctx, texto, limite, nome='O texto'):
+    if not texto.strip():
+        await ctx.reply(f'{nome} não pode ficar vazio.')
+        return False
+
+    if len(texto) > limite:
+        await ctx.reply(
+            f'{nome} pode ter no máximo **{limite} caracteres**. '
+            f'Você enviou **{len(texto)}**.'
+        )
+        return False
+
+    return True
+
 #endregion
 
 #region Normais
@@ -49,6 +77,9 @@ async def oi(ctx):
 
 @bot.command()
 async def eco(ctx, *, mensagem):
+    if not await validar_texto(ctx, mensagem, 2000, 'A mensagem'):
+        return
+
     await ctx.send(mensagem)
 
 @bot.command()
@@ -108,43 +139,95 @@ async def lembrar(ctx, minutos: int, *, mensagem: str):
     if minutos < 1 or minutos > 1440:
         await ctx.reply('Escolha um tempo entre 1 minuto e 24 horas.')
         return
-    await ctx.send(f'⏰ Beleza, vou te lembrar em {minutos} minuto(s).')
+
+    prefixo = f'{ctx.author.mention}, lembrete: **'
+    sufixo = '**'
+    limite = 2000 - len(prefixo) - len(sufixo)
+
+    if not await validar_texto(ctx, mensagem, limite, 'O lembrete'):
+        return
+
+    resposta = f'{prefixo}{mensagem}{sufixo}'
+
+    await ctx.send(
+        f'⏰ Beleza, vou te lembrar em {minutos} minuto(s).'
+    )
+
     await asyncio.sleep(minutos * 60)
-    await ctx.send(f'{ctx.author.mention}, lembrete: **{mensagem}**')
+    await ctx.send(resposta)
 
 @bot.command()
 @commands.guild_only()
 @commands.has_guild_permissions(manage_messages=True)
 async def anunciar(ctx, *, texto: str):
+    if not await validar_texto(ctx, texto, 4096, 'O anúncio'):
+        return
+    
     embed = discord.Embed(title='📢 Aviso da moderação', description=texto, color=discord.Color.gold())
     embed.set_footer(text=f'Enviado por {ctx.author.display_name}')
     await ctx.send(embed=embed)
 
 @bot.command()
 async def hora(ctx):
-    agora = datetime.now().strftime('%H:%M:%S')
-    await ctx.send(f'🕒 Agora são **{agora}**.')
+    fuso = ZoneInfo('America/Sao_Paulo')
+    agora = datetime.now(fuso).strftime('%H:%M:%S')
+
+    await ctx.send(
+        f'🕒 Agora são **{agora}** — horário de São Paulo.'
+    )
 
 @bot.command(cooldown_after_parsing=True)
 @commands.cooldown(1, 30, commands.BucketType.channel)
 async def enquete(ctx, *, pergunta: str):
-    mensagem = await ctx.send(f'📊 **Enquete:** {pergunta}')
+    prefixo = '📊 **Enquete:** '
+    limite = 2000 - len(prefixo)
+
+    if not await validar_texto(ctx, pergunta, limite, 'A pergunta'):
+        return
+
+    mensagem = await ctx.send(f'{prefixo}{pergunta}')
+
     await mensagem.add_reaction('👍')
     await mensagem.add_reaction('👎')
 
 @bot.command(cooldown_after_parsing=True)
 @commands.cooldown(1, 60, commands.BucketType.member)
 @commands.guild_only()
-async def denunciar(ctx, membro: discord.Member, *, motivo):
-    canal_logs = bot.get_channel(LOGS_CHANNEL_ID)
-    if canal_logs is None:
-        await ctx.send('Não encontrei o canal de logs.')
+async def denunciar(ctx, membro: discord.Member, *, motivo: str):
+    if not await validar_texto(ctx, motivo, 1024, 'O motivo'):
         return
-    embed = discord.Embed(title='Denúncia recebida', color=discord.Color.orange())
-    embed.add_field(name='Pessoa denunciada', value=membro.mention)
-    embed.add_field(name='Quem denunciou', value=ctx.author.mention)
-    embed.add_field(name='Motivo', value=motivo, inline=False)
-    await canal_logs.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+
+    canal_logs = ctx.guild.get_channel(LOGS_CHANNEL_ID)
+
+    if not isinstance(canal_logs, discord.TextChannel):
+        await ctx.send(
+            'Não encontrei um canal de texto válido para os logs neste servidor.'
+        )
+        return
+
+    embed = discord.Embed(
+        title='Denúncia recebida',
+        color=discord.Color.orange()
+    )
+    embed.add_field(
+        name='Pessoa denunciada',
+        value=membro.mention
+    )
+    embed.add_field(
+        name='Quem denunciou',
+        value=ctx.author.mention
+    )
+    embed.add_field(
+        name='Motivo',
+        value=motivo,
+        inline=False
+    )
+
+    await canal_logs.send(
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions.none()
+    )
+
     await ctx.send('Denúncia enviada para a equipe do servidor.')
 
 @bot.command()
@@ -162,14 +245,27 @@ async def slowmode(ctx, segundos: int):
         return
     try:
         await ctx.channel.edit(slowmode_delay=segundos)
-        if segundos == 0:
-            await ctx.send('🔓 Modo lento desativado neste canal.')
-        else:
-            await ctx.send(f'🐢 Modo lento ativado: **{segundos} segundos** entre mensagens.')
     except discord.Forbidden:
         await ctx.reply('Não tenho permissão para alterar este canal.')
+        return
     except discord.HTTPException:
         await ctx.reply('O Discord não conseguiu alterar o modo lento.')
+        return
+
+    if segundos == 0:
+        mensagem = '🔓 Modo lento desativado neste canal.'
+    else:
+        mensagem = (
+            f'🐢 Modo lento ativado: **{segundos} segundos** entre mensagens.'
+        )
+
+    try:
+        await ctx.send(mensagem)
+    except discord.HTTPException as erro:
+        print(
+            f'[Slowmode] Canal {ctx.channel.id} alterado para {segundos}s, '
+            f'mas não consegui enviar a confirmação: {erro}'
+        )
 
 @bot.command()
 @commands.guild_only()
@@ -198,13 +294,47 @@ async def timeout(ctx, membro: discord.Member, minutos: int, *, motivo: str='Nã
     if minutos < 1 or minutos > 40320:
         await ctx.reply('Escolha uma duração entre 1 minuto e 28 dias.')
         return
+    prefixo_auditoria = f'Aplicado por ID {ctx.author.id}: '
+    limite_motivo = 512 - len(quote(prefixo_auditoria, safe='/ '))
+
+    if not await validar_texto(ctx, motivo, limite_motivo, 'O motivo'):
+        return
+
+    motivo_auditoria = f'{prefixo_auditoria}{motivo}'
+
+    if len(quote(motivo_auditoria, safe='/ ')) > 512:
+        await ctx.reply(
+            'O motivo é longo demais para o registro do Discord. '
+            'Encurte o texto; acentos e emojis ocupam mais espaço nesse registro.'
+        )
+        return
     try:
-        await membro.timeout(timedelta(minutes=minutos), reason=f'Aplicado por {ctx.author}: {motivo}')
-        await ctx.send(f'🔇 {membro.mention} recebeu timeout por **{minutos} minuto(s)**. Motivo: {motivo}')
+        await membro.timeout(
+            timedelta(minutes=minutos),
+            reason=motivo_auditoria
+        )
     except discord.Forbidden:
-        await ctx.reply('Não consegui aplicar o timeout. Confira as permissões e a posição dos cargos.')
+        await ctx.reply(
+            'Não consegui aplicar o timeout. '
+            'Confira as permissões e a posição dos cargos.'
+        )
+        return
     except discord.HTTPException:
         await ctx.reply('O Discord não conseguiu aplicar o timeout.')
+        return
+
+    mensagem = (
+        f'🔇 {membro.mention} recebeu timeout por '
+        f'**{minutos} minuto(s)**. Motivo: {motivo}'
+    )
+
+    try:
+        await ctx.send(mensagem)
+    except discord.HTTPException as erro:
+        print(
+            f'[Timeout] Timeout aplicado ao membro {membro.id}, '
+            f'mas não consegui enviar a confirmação: {erro}'
+        )
 
 #endregion
 
@@ -249,9 +379,33 @@ async def jokenpo(ctx, escolha: str):
 
 @bot.command()
 async def bola8(ctx, *, pergunta: str):
-    respostas = ['Com certeza!', 'É bem provável.', 'As chances são boas.', 'Melhor perguntar de novo.', 'Não conte com isso.', 'Provavelmente não.', 'Com certeza não!']
+    respostas = [
+        'Com certeza!',
+        'É bem provável.',
+        'As chances são boas.',
+        'Melhor perguntar de novo.',
+        'Não conte com isso.',
+        'Provavelmente não.',
+        'Com certeza não!'
+    ]
+
+    prefixo = f'🎱 **{ctx.author.display_name} perguntou:** '
+    separador = '\n**Resposta:** '
+    maior_resposta = max(len(resposta) for resposta in respostas)
+
+    limite = (
+        2000
+        - len(prefixo)
+        - len(separador)
+        - maior_resposta
+    )
+
+    if not await validar_texto(ctx, pergunta, limite, 'A pergunta'):
+        return
+
     resposta = random.choice(respostas)
-    await ctx.send(f'🎱 **{ctx.author.display_name} perguntou:** {pergunta}\n**Resposta:** {resposta}')
+
+    await ctx.send(f'{prefixo}{pergunta}{separador}{resposta}')
 
 @bot.command()
 async def dado(ctx, lados: int=6):
@@ -263,12 +417,29 @@ async def dado(ctx, lados: int=6):
 
 @bot.command()
 async def escolher(ctx, *, texto: str):
-    opcoes = [opcao.strip() for opcao in texto.split(',') if opcao.strip()]
+    opcoes = [
+        opcao.strip()
+        for opcao in texto.split(',')
+        if opcao.strip()
+    ]
+
     if len(opcoes) < 2:
-        await ctx.reply('Mande pelo menos duas opções, separadas por `,`.')
+        await ctx.reply(
+            'Mande pelo menos duas opções, separadas por `,`.'
+        )
         return
+
+    prefixo = '🤔 Eu escolheria: **'
+    sufixo = '**'
+    limite = 2000 - len(prefixo) - len(sufixo)
+
+    for opcao in opcoes:
+        if not await validar_texto(ctx, opcao, limite, 'Cada opção'):
+            return
+
     escolhido = random.choice(opcoes)
-    await ctx.send(f'🤔 Eu escolheria: **{escolhido}**')
+
+    await ctx.send(f'{prefixo}{escolhido}{sufixo}')
 
 @bot.command()
 async def calcular(ctx, numero1: float, operacao: str, numero2: float):
@@ -294,6 +465,8 @@ async def calcular(ctx, numero1: float, operacao: str, numero2: float):
 
 @bot.command()
 async def dadorpg(ctx, notacao: str='1d6'):
+    if not await validar_texto(ctx, notacao, 50, 'A notação dos dados'):
+        return
     resultado = re.fullmatch('(\\d*)d(\\d+)([+-]\\d+)?', notacao.lower())
     if not resultado:
         await ctx.reply('Formato inválido. Exemplos: `d20`, `2d6+3`, `4d8-1`.')
@@ -347,6 +520,8 @@ async def teste(ctx, cd: int, bonus: int=0):
 
 @bot.command()
 async def dano(ctx, notacao: str):
+    if not await validar_texto(ctx, notacao, 50, 'A notação dos dados'):
+        return
     resultado = re.fullmatch('(\\d*)d(\\d+)([+-]\\d+)?', notacao.lower())
     if not resultado:
         await ctx.reply('Formato inválido. Exemplo: `!dano 1d8+3`.')
@@ -377,6 +552,8 @@ async def desvantagem(ctx):
 
 @bot.command()
 async def cura(ctx, notacao):
+    if not await validar_texto(ctx, notacao, 50, 'A notação dos dados'):
+        return
     correspondencia = re.fullmatch('(\\d*)d(\\d+)([+-]\\d+)?', notacao.lower().replace(' ', ''))
     if not correspondencia:
         await ctx.send('Use assim: `!cura 2d8+3`')
@@ -467,7 +644,6 @@ async def on_member_remove(member):
     print(f'[Servidor {member.guild.id}] {texto_log}')
     await enviar_aviso(member.guild, LOGS_CHANNEL_ID, texto_log)
 
-@bot.event
 async def enviar_aviso(guild, canal_id, texto, *, mencoes=None):
     canal = guild.get_channel(canal_id)
     if not isinstance(canal, discord.TextChannel):
@@ -513,7 +689,7 @@ class SeletorAjuda(discord.ui.Select):
 
 '', 'utilitarios': 
 '**Comandos Utilitários**\n'
-'`!ajuda` ➔ *Exibe esta mensagem de ajuda*\n`!servidor` ➔ *Exibe informações sobre o servidor*\n'
+'`!ajuda` ➔ *Exibe esta mensagem de ajuda*\n'
 '`!limpar <quantidade>` ➔ *Limpa a quantidade especificada de mensagens*\n'
 '`!lembrar <minutos> <mensagem>` ➔ *Define um lembrete que será enviado após o tempo especificado*\n'
 '`!anunciar <mensagem>` ➔ *Envia um anúncio no canal atual (requer permissão de gerenciar mensagens)*\n'
@@ -554,6 +730,7 @@ class SeletorAjuda(discord.ui.Select):
 }
         categoria = self.values[0]
         await interaction.response.edit_message(content=listas[categoria], view=self.view)
+
 #endregion
 
 #region Trancar/Destrancar
@@ -572,11 +749,16 @@ async def alterar_bloqueio(ctx, bloquear):
     if not isinstance(ctx.channel, discord.TextChannel):
         await ctx.reply('Use este comando em um canal de texto, fora de threads.')
         return
-    if not ctx.channel.permissions_for(ctx.author).manage_roles:
-        await ctx.reply('Você precisa da permissão **Gerenciar cargos** neste canal.')
+    if not ctx.channel.permissions_for(ctx.author).manage_channels:
+        await ctx.reply(
+            'Você precisa da permissão **Gerenciar canais** neste canal.'
+        )
         return
+
     if not ctx.channel.permissions_for(ctx.guild.me).manage_roles:
-        await ctx.reply('Eu preciso da permissão **Gerenciar cargos** neste canal.')
+        await ctx.reply(
+            'Eu preciso da permissão **Gerenciar cargos** neste canal.'
+        )
         return
     trava = travas_bloqueios.setdefault(ctx.channel.id, asyncio.Lock())
     async with trava:
@@ -630,6 +812,7 @@ async def destrancar(ctx):
 #endregion
 
 #region Tratamento de Erros no Geral
+
 NOMES_PERMISSOES = {
     'manage_messages': 'Gerenciar mensagens', 'manage_roles': 'Gerenciar cargos', 'manage_channels': 'Gerenciar canais', 'moderate_members': 'Moderar membros', 'send_messages': 'Enviar mensagens', 'view_channel': 'Ver canal', 'read_message_history': 'Ler histórico de mensagens', 'embed_links': 'Inserir links' 
  }
@@ -678,13 +861,16 @@ async def on_command_error(ctx, erro):
         await ctx.reply(mensagem, mention_author=False, allowed_mentions=discord.AllowedMentions.none())
     except discord.HTTPException as erro_envio:
         print(f'[Erros] Não consegui enviar a resposta: {erro_envio}')
+
 #endregion
 
 #region Token
+
 if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         raise RuntimeError('Não encontrei o token no arquivo .env')
     
     bot.run(token)
+
 #endregion
