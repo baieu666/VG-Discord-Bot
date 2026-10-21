@@ -7,6 +7,7 @@ import re
 import asyncio
 import sqlite3
 import traceback
+from utils.validacoes import validar_texto
 from urllib.parse import quote
 from pathlib import Path
 from contextlib import closing
@@ -27,9 +28,14 @@ intents.members = True
 
 #endregion
 
+class VGBot(commands.Bot):
+    async def setup_hook(self):
+        await self.load_extension('cogs.normais')
+        await self.load_extension('cogs.utilitarios')
+
 #region botStart
 
-bot = commands.Bot(command_prefix='!', intents=intents, 
+bot = VGBot(command_prefix='!', intents=intents, 
 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=False))
 
 @bot.event
@@ -44,75 +50,6 @@ CANAL_BOAS_VINDAS_ID = 1376318643545047040
 LOGS_CHANNEL_ID = 1553817590424404148
 CANAL_SAIDA_ID = 1376319478090170471
 CARGO_AUTOMATICO_ID = 1070059865004855337
-
-#endregion
-
-#region Validação de Textos
-
-async def validar_texto(ctx, texto, limite, nome='O texto'):
-    if not texto.strip():
-        await ctx.reply(f'{nome} não pode ficar vazio.')
-        return False
-
-    if len(texto) > limite:
-        await ctx.reply(
-            f'{nome} pode ter no máximo **{limite} caracteres**. '
-            f'Você enviou **{len(texto)}**.'
-        )
-        return False
-
-    return True
-
-#endregion
-
-#region Normais
-
-@bot.command()
-async def ping(ctx):
-    await ctx.send('pong!')
-
-@bot.command()
-async def oi(ctx):
-    await ctx.send(f'Salve, {ctx.author.mention}!')
-
-@bot.command()
-async def eco(ctx, *, mensagem):
-    if not await validar_texto(ctx, mensagem, 2000, 'A mensagem'):
-        return
-
-    await ctx.send(mensagem)
-
-@bot.command()
-async def info(ctx):
-    await ctx.send('Eu sou um bot que tem o intuito de auxiliar o Esgoto do Ratão.\nDeveloped by: baieu666\nVersão: 1.0.0')
-
-@bot.command()
-async def avatar(ctx, membro: discord.Member=None):
-    membro = membro or ctx.author
-    await ctx.send(membro.display_avatar.url)
-
-@bot.command()
-@commands.guild_only()
-async def perfil(ctx, membro: discord.Member | None=None):
-    membro = membro or ctx.author
-    entrou = discord.utils.format_dt(membro.joined_at, style='D') if membro.joined_at else 'Data indisponível'
-    embed = discord.Embed(title=f'Perfil de {membro.display_name}', color=discord.Color.blurple())
-    embed.add_field(name='ID', value=membro.id, inline=False)
-    embed.add_field(name='Conta criada', value=discord.utils.format_dt(membro.created_at, style='D'))
-    embed.add_field(name='Entrou no servidor', value=entrou)
-    embed.set_thumbnail(url=membro.display_avatar.url)
-    await ctx.send(embed=embed)
-
-@bot.command()
-@commands.guild_only()
-async def servidor(ctx):
-    servidor = ctx.guild
-    embed = discord.Embed(title=f'Sobre {servidor.name}', color=discord.Color.blurple())
-    embed.add_field(name='Membros', value=servidor.member_count or 'Indisponível', inline=True)
-    embed.add_field(name='Criado em', value=discord.utils.format_dt(servidor.created_at, style='D'), inline=True)
-    if servidor.icon:
-        embed.set_thumbnail(url=servidor.icon.url)
-    await ctx.send(embed=embed)
 
 #endregion
 
@@ -135,28 +72,6 @@ async def limpar(ctx, quantidade: int):
     await ctx.send(f'Apaguei {len(apagas)} {unidade}.', delete_after=5)
 
 @bot.command()
-async def lembrar(ctx, minutos: int, *, mensagem: str):
-    if minutos < 1 or minutos > 1440:
-        await ctx.reply('Escolha um tempo entre 1 minuto e 24 horas.')
-        return
-
-    prefixo = f'{ctx.author.mention}, lembrete: **'
-    sufixo = '**'
-    limite = 2000 - len(prefixo) - len(sufixo)
-
-    if not await validar_texto(ctx, mensagem, limite, 'O lembrete'):
-        return
-
-    resposta = f'{prefixo}{mensagem}{sufixo}'
-
-    await ctx.send(
-        f'⏰ Beleza, vou te lembrar em {minutos} minuto(s).'
-    )
-
-    await asyncio.sleep(minutos * 60)
-    await ctx.send(resposta)
-
-@bot.command()
 @commands.guild_only()
 @commands.has_guild_permissions(manage_messages=True)
 async def anunciar(ctx, *, texto: str):
@@ -166,29 +81,6 @@ async def anunciar(ctx, *, texto: str):
     embed = discord.Embed(title='📢 Aviso da moderação', description=texto, color=discord.Color.gold())
     embed.set_footer(text=f'Enviado por {ctx.author.display_name}')
     await ctx.send(embed=embed)
-
-@bot.command()
-async def hora(ctx):
-    fuso = ZoneInfo('America/Sao_Paulo')
-    agora = datetime.now(fuso).strftime('%H:%M:%S')
-
-    await ctx.send(
-        f'🕒 Agora são **{agora}** — horário de São Paulo.'
-    )
-
-@bot.command(cooldown_after_parsing=True)
-@commands.cooldown(1, 30, commands.BucketType.channel)
-async def enquete(ctx, *, pergunta: str):
-    prefixo = '📊 **Enquete:** '
-    limite = 2000 - len(prefixo)
-
-    if not await validar_texto(ctx, pergunta, limite, 'A pergunta'):
-        return
-
-    mensagem = await ctx.send(f'{prefixo}{pergunta}')
-
-    await mensagem.add_reaction('👍')
-    await mensagem.add_reaction('👎')
 
 @bot.command(cooldown_after_parsing=True)
 @commands.cooldown(1, 60, commands.BucketType.member)
@@ -864,7 +756,7 @@ async def on_command_error(ctx, erro):
 
 #endregion
 
-#region Token
+#region Token'
 
 if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')
