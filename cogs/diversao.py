@@ -1,9 +1,11 @@
+#region Imports
+
 import random
 import discord
 from discord.ext import commands
-from flask import ctx
 from utils.validacoes import validar_texto
 
+#endregion
 
 class Diversao(commands.Cog):
     def __init__(self, bot):
@@ -99,6 +101,57 @@ class Diversao(commands.Cog):
 
         escolhido = random.choice(opcoes)
         await ctx.send(f'{prefixo}{escolhido}{sufixo}')
+
+    @commands.command(cooldown_after_parsing=True)
+    @commands.cooldown(1, 10, commands.BucketType.guild)
+    @commands.guild_only()
+    async def sortear(self, ctx):
+        try:
+            membros = [
+                membro
+                async for membro in ctx.guild.fetch_members(limit=None)
+                if not membro.bot
+            ]
+        except discord.Forbidden:
+            await ctx.reply('Não consegui acessar a lista de membros.')
+            return
+        except discord.ClientException:
+            await ctx.reply(
+                'Ative o Server Members Intent no código '
+                'e no Developer Portal.'
+            )
+            return
+        except discord.HTTPException as erro:
+            await ctx.reply(f'Erro ao buscar os membros: {erro}')
+            return
+
+        if not membros:
+            await ctx.reply('Não encontrei membros para sortear.')
+            return
+
+        sorteado = random.choice(membros)
+        await ctx.send(f'🎉 A pessoa sorteada foi {sorteado.mention}!')
+
+    @commands.command()
+    async def calcular(self, ctx, numero1: float, operacao: str, numero2: float):
+        if operacao == '+':
+            resultado = numero1 + numero2
+        elif operacao == '-':
+            resultado = numero1 - numero2
+        elif operacao in ('*', 'x'):
+            resultado = numero1 * numero2
+        elif operacao == '/':
+            if numero2 == 0:
+                await ctx.reply('Não dá para dividir por zero.')
+                return
+            resultado = numero1 / numero2
+        else:
+            await ctx.reply('Use uma operação: `+`, `-`, `*` ou `/`.')
+            return
+
+        await ctx.send(
+            f'🧮 {numero1:g} {operacao} {numero2:g} = **{resultado:g}**'
+        )
 
 async def setup(bot):
     await bot.add_cog(Diversao(bot))

@@ -1,9 +1,13 @@
+#region Imports
+
 import discord
 from datetime import timedelta
 from urllib.parse import quote
 from discord.ext import commands
 from utils.validacoes import validar_texto
 from config import LOGS_CHANNEL_ID
+
+#endregion
 
 class Moderacao(commands.Cog):
     def __init__(self, bot):
@@ -30,7 +34,10 @@ class Moderacao(commands.Cog):
     @commands.command()
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
-    @commands.bot_has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(
+        manage_messages=True,
+        read_message_history=True
+    )
     async def limpar(self, ctx, quantidade: int):
         if quantidade < 1 or quantidade > 100:
             await ctx.reply(

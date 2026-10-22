@@ -9,13 +9,10 @@ import sqlite3
 import traceback
 from config import LOGS_CHANNEL_ID
 from utils.validacoes import validar_texto
-from urllib.parse import quote
 from pathlib import Path
 from contextlib import closing
 from discord.ext import commands
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 #endregion
 
@@ -29,14 +26,15 @@ intents.members = True
 
 #endregion
 
+#region botStart
+
 class VGBot(commands.Bot):
     async def setup_hook(self):
         await self.load_extension('cogs.normais')
         await self.load_extension('cogs.utilitarios')
         await self.load_extension('cogs.moderacao')
         await self.load_extension('cogs.diversao')
-
-#region botStart
+        await self.load_extension('cogs.rpg')
 
 bot = VGBot(command_prefix='!', intents=intents, 
 allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=False))
@@ -55,131 +53,7 @@ CARGO_AUTOMATICO_ID = 1070059865004855337
 
 #endregion
 
-#region Utilitários
-
-@bot.command()
-async def ajuda(ctx):
-    await ctx.send('Escolha uma categoria para ver os comandos que o VG oferece:', view=MenuAjuda())
-
-#endregion
-
-#region Diversão
-
-@bot.command(cooldown_after_parsing=True)
-@commands.cooldown(1, 10, commands.BucketType.guild)
-@commands.guild_only()
-async def sortear(ctx):
-    try:
-        membros = [membro async for membro in ctx.guild.fetch_members(limit=None) if not membro.bot]
-    except discord.Forbidden:
-        await ctx.reply('Não consegui acessar a lista de membros.')
-        return
-    except discord.ClientException:
-        await ctx.reply('Ative o Server Members Intent no código e no Developer Portal.')
-        return
-    except discord.HTTPException as erro:
-        await ctx.reply(f'Erro ao buscar os membros: {erro}')
-        return
-    if not membros:
-        await ctx.reply('Não encontrei membros para sortear.')
-        return
-    sorteado = random.choice(membros)
-    await ctx.send(f'🎉 A pessoa sorteada foi {sorteado.mention}!')
-
-    prefixo = f'🎱 **{ctx.author.display_name} perguntou:** '
-    separador = '\n**Resposta:** '
-    maior_resposta = max(len(resposta) for resposta in respostas)
-
-    limite = (
-        2000
-        - len(prefixo)
-        - len(separador)
-        - maior_resposta
-    )
-
-    if not await validar_texto(ctx, pergunta, limite, 'A pergunta'):
-        return
-
-    resposta = random.choice(respostas)
-
-    await ctx.send(f'{prefixo}{pergunta}{separador}{resposta}')
-
-@bot.command()
-async def calcular(ctx, numero1: float, operacao: str, numero2: float):
-    if operacao == '+':
-        resultado = numero1 + numero2
-    elif operacao == '-':
-        resultado = numero1 - numero2
-    elif operacao in ('*', 'x'):
-        resultado = numero1 * numero2
-    elif operacao == '/':
-        if numero2 == 0:
-            await ctx.reply('Não dá para dividir por zero.')
-            return
-        resultado = numero1 / numero2
-    else:
-        await ctx.reply('Use uma operação: `+`, `-`, `*` ou `/`.')
-        return
-    await ctx.send(f'🧮 {numero1:g} {operacao} {numero2:g} = **{resultado:g}**')
-
-#endregion
-
 #region RPG
-
-@bot.command()
-async def dadorpg(ctx, notacao: str='1d6'):
-    if not await validar_texto(ctx, notacao, 50, 'A notação dos dados'):
-        return
-    resultado = re.fullmatch('(\\d*)d(\\d+)([+-]\\d+)?', notacao.lower())
-    if not resultado:
-        await ctx.reply('Formato inválido. Exemplos: `d20`, `2d6+3`, `4d8-1`.')
-        return
-    quantidade = int(resultado.group(1) or 1)
-    lados = int(resultado.group(2))
-    modificador = int(resultado.group(3) or 0)
-    if quantidade < 1 or quantidade > 20 or lados < 2 or (lados > 100):
-        await ctx.reply('Use de 1 a 20 dados, com 2 a 100 lados cada.')
-        return
-    rolagens = [random.randint(1, lados) for _ in range(quantidade)]
-    total = sum(rolagens) + modificador
-    detalhes = ' + '.join((str(rolagem) for rolagem in rolagens))
-    if modificador > 0:
-        detalhes += f' + {modificador}'
-    elif modificador < 0:
-        detalhes += f' - {abs(modificador)}'
-    await ctx.send(f'🎲 Rolagem `{notacao}`: **{total}** (`{detalhes}`)')
-
-@bot.command()
-async def atributos(ctx):
-    nomes = ['Força', 'Destreza', 'Constituição', 'Inteligência', 'Sabedoria', 'Carisma']
-    embed = discord.Embed(title=f'Atributos de {ctx.author.display_name}', color=discord.Color.purple())
-    for nome in nomes:
-        dados = sorted([random.randint(1, 6) for _ in range(4)])
-        total = sum(dados[1:])
-        embed.add_field(name=nome, value=f'**{total}** — dados: {dados}', inline=True)
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def modificador(ctx, pontuacao: int):
-    if pontuacao < 1 or pontuacao > 30:
-        await ctx.reply('Use uma pontuação de 1 a 30.')
-        return
-    valor = (pontuacao - 10) // 2
-    sinal = f'+{valor}' if valor >= 0 else str(valor)
-    await ctx.send(f'🎲 Atributo **{pontuacao}** dá modificador **{sinal}**.')
-
-@bot.command()
-async def iniciativa(ctx, bonus: int=0):
-    d20 = random.randint(1, 20)
-    total = d20 + bonus
-    await ctx.send(f'⚔️ **{ctx.author.display_name}** rolou iniciativa: d20 ({d20}) {bonus:+} = **{total}**')
-
-@bot.command()
-async def teste(ctx, cd: int, bonus: int=0):
-    d20 = random.randint(1, 20)
-    total = d20 + bonus
-    resultado = '✅ Sucesso!' if total >= cd else '❌ Falha!'
-    await ctx.send(f'🎲 CD {cd}: d20 ({d20}) {bonus:+} = **{total}** — {resultado}')
 
 @bot.command()
 async def dano(ctx, notacao: str):
@@ -321,78 +195,6 @@ async def enviar_aviso(guild, canal_id, texto, *, mencoes=None):
     except discord.HTTPException as erro:
         print(f'[Eventos] Falha no canal {canal_id}: {erro}')
         return 'não enviado; erro do Discord'
-
-#endregion
-
-#region Categorias
-
-class MenuAjuda(discord.ui.View):
-
-    def __init__(self):
-        super().__init__(timeout=180)
-        self.add_item(SeletorAjuda())
-
-class SeletorAjuda(discord.ui.Select):
-
-    def __init__(self):
-        opcoes = [discord.SelectOption(label='Comandos Normais', value='normal'), discord.SelectOption(label='Comandos Utilitários', value='utilitarios'), discord.SelectOption(label='Comandos de Diversão', value='diversao'), discord.SelectOption(label='Comandos de RPG', value='rpg')]
-        super().__init__(placeholder='Escolha uma categoria...', min_values=1, max_values=1, options=opcoes)
-
-    async def callback(self, interaction: discord.Interaction):
-        listas = {
-'normal':
-'**Comandos Normais**\n'
-'`!ping` ➔ *Verifica se o bot está funcionando*\n'
-'`!oi` ➔ *Cumprimenta o usuário*\n'
-'`!eco <mensagem>` ➔ *Repete a mensagem enviada*\n'
-'`!avatar [@pessoa]` ➔ *Exibe o avatar do usuário mencionado ou do autor se nenhum for mencionado*\n'
-'`!perfil [@pessoa]` ➔ *Exibe informações do perfil do usuário mencionado ou do autor se nenhum for mencionado*\n'
-'`!info` ➔ *Exibe informações sobre o bot*\n'
-'`!servidor` ➔ *Exibe informações sobre o servidor*\n'
-
-'', 'utilitarios': 
-'**Comandos Utilitários**\n'
-'`!ajuda` ➔ *Exibe esta mensagem de ajuda*\n'
-'`!limpar <quantidade>` ➔ *Limpa a quantidade especificada de mensagens*\n'
-'`!lembrar <minutos> <mensagem>` ➔ *Define um lembrete que será enviado após o tempo especificado*\n'
-'`!anunciar <mensagem>` ➔ *Envia um anúncio no canal atual (requer permissão de gerenciar mensagens)*\n'
-'`!hora` ➔ *Exibe a hora atual*\n'
-'`!enquete <pergunta>` ➔ *Cria uma enquete com a pergunta especificada*\n'
-'`!denunciar <@pessoa> <motivo>` ➔ *Envia uma denúncia para o canal de logs do servidor*\n'
-'`!slowmode <segundos>` ➔ *Define o modo lento do canal atual (requer permissão de gerenciar canais)*\n'
-'`!trancar` ➔ *Tranca o canal atual (requer permissão de gerenciar canais)*\n'
-'`!destrancar` ➔ *Destranca o canal atual (requer permissão de gerenciar canais)*\n'
-'`!timeout <@pessoa> <minutos> [motivo]` ➔ *Aplica timeout a um membro (requer permissão de moderar membros)*\n'
-
-'', 'diversao': 
-'**Comandos de Diversão**\n'
-'`!sortear` ➔ *Sorteia um membro aleatório do servidor*\n'
-'`!jokenpo <pedra/papel/tesoura>` ➔ *Joga jokenpo com o bot (como usar: Dê !jokenpo e escolha entre pedra, papel ou tesoura)*\n'
-'`!bola8 <pergunta>` ➔ *Responde a uma pergunta com uma resposta aleatória*\n'
-'`!dado <lados>` ➔ *Rola um dado com o número de lados especificado*\n'
-'`!escolher <opções separadas por vírgula>` ➔ *Escolhe aleatoriamente entre as opções fornecidas*\n'
-'`!calcular <número> <operação> <número>` ➔ *Realiza um cálculo simples*\n'
-
-'', 'rpg': 
-'**Comandos de RPG**\n'
-'`!dadorpg <dados>` ➔ *Rola dados no formato de RPG (ex: 2d6+3)*\n'
-'`!atributos` ➔ *Gera atributos aleatórios de RPG (Força, Destreza, Constituição, Inteligência, Sabedoria, Carisma)*\n'
-'`!modificador <pontuação>` ➔ *Calcula o modificador de atributo com base na pontuação fornecida*\n'
-'`!iniciativa [bônus]` ➔ *Rola iniciativa*\n'
-'`!teste <CD> [bônus]` ➔ *Faz um teste de RPG*\n'
-'`!dano <dados>` ➔ *Rola dano, exemplo: `!dano 1d8+3`*\n'
-'`!vantagem` ➔ *Rola dois d20 e fica com o maior*\n'
-'`!desvantagem` ➔ *Rola dois d20 e fica com o menor*\n'
-'`!cura <dados>` ➔ *Rola cura, exemplo: `!cura 2d8+3`*\n'
-'`!resistencia [bônus]` ➔ *Rola teste de resistência, exemplo: `!resistencia 2`*\n'
-'`!npc` ➔ *Gera um NPC aleatório com nome, raça, profissão e traço de personalidade*\n'
-'`!tesouro` ➔ *Encontra um tesouro aleatório com itens e moedas*\n'
-'`!missao` ➔ *Gera uma missão aleatória com objetivos, locais e complicações*\n'
-'`!monstro` ➔ *Gera um monstro aleatório com estatísticas*\n'
-'`!evento` ➔ *Gera um evento aleatório para a aventura*\n'
-}
-        categoria = self.values[0]
-        await interaction.response.edit_message(content=listas[categoria], view=self.view)
 
 #endregion
 
