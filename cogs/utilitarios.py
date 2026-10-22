@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 from utils.validacoes import validar_texto
 from discord.ext import commands
 
-
 class Utilitarios(commands.Cog):
     def __init__(self, bot):
         self.bot = bot

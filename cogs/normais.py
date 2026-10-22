@@ -1,7 +1,6 @@
+import discord
 from discord.ext import commands
 from utils.validacoes import validar_texto
-import discord
-
 
 class Normais(commands.Cog):
     def __init__(self, bot):
