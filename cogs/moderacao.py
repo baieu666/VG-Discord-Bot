@@ -1,6 +1,9 @@
 #region Imports
 
 import discord
+import asyncio
+import sqlite3
+from utils.bloqueios import banco_bloqueios
 from datetime import timedelta
 from urllib.parse import quote
 from discord.ext import commands
@@ -12,6 +15,7 @@ from config import LOGS_CHANNEL_ID
 class Moderacao(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.travas_bloqueios = {}
 
     @commands.command()
     @commands.guild_only()
@@ -202,6 +206,72 @@ class Moderacao(commands.Cog):
     )
 
         await ctx.send('Denúncia enviada para a equipe do servidor.')
+
+    async def alterar_bloqueio(self, ctx, bloquear):
+        if not isinstance(ctx.channel, discord.TextChannel):
+            await ctx.reply('Use este comando em um canal de texto, fora de threads.')
+            return
+        if not ctx.channel.permissions_for(ctx.author).manage_channels:
+            await ctx.reply(
+                'Você precisa da permissão **Gerenciar canais** neste canal.'
+            )
+            return
+
+        if not ctx.channel.permissions_for(ctx.guild.me).manage_roles:
+            await ctx.reply(
+                'Eu preciso da permissão **Gerenciar cargos** neste canal.'
+            )
+            return
+        trava = self.travas_bloqueios.setdefault(
+        ctx.channel.id, asyncio.Lock()
+            )
+        async with trava:
+            try:
+                canal = await ctx.guild.fetch_channel(ctx.channel.id)
+                cargo_todos = ctx.guild.default_role
+                permissao = canal.overwrites_for(cargo_todos)
+                registro = banco_bloqueios('SELECT envio_original FROM bloqueios WHERE canal_id = ?', (canal.id,))
+                if bloquear:
+                    if registro is not None:
+                        await ctx.reply('Já existe um bloqueio salvo. Use `!destrancar` primeiro.')
+                        return
+                    if permissao.send_messages is False:
+                        await ctx.reply('O envio de mensagens para @everyone já está negado. Não alterei nada.', allowed_mentions=discord.AllowedMentions.none())
+                        return
+                    banco_bloqueios('INSERT INTO bloqueios (canal_id, envio_original) VALUES (?, ?)', (canal.id, permissao.send_messages))
+                    permissao.send_messages = False
+                else:
+                    if registro is None:
+                        await ctx.reply('Não tenho uma permissão original salva para este canal.')
+                        return
+                    permissao.send_messages = None if registro[0] is None else bool(registro[0])
+                await canal.set_permissions(cargo_todos, overwrite=None if permissao.is_empty() else permissao, reason=f"{('Trancar' if bloquear else 'Destrancar')} por {ctx.author} ({ctx.author.id})")
+                if not bloquear:
+                    banco_bloqueios('DELETE FROM bloqueios WHERE canal_id = ?', (canal.id,))
+            except discord.Forbidden:
+                await ctx.reply('Não consegui alterar as permissões. Se há um registro salvo, corrija minhas permissões e use `!destrancar`.')
+                return
+            except discord.HTTPException:
+                await ctx.reply('O Discord não confirmou a alteração. Se há um registro salvo, use `!destrancar` para restaurar o estado anterior.')
+                return
+            except sqlite3.Error:
+                await ctx.reply('Falha no banco de bloqueios. Confira o terminal antes de tentar novamente.')
+                raise
+            mensagem = '🔒 Envio de mensagens negado para @everyone.' if bloquear else '🔓 Permissão original de envio restaurada.'
+            try:
+                await ctx.send(mensagem, allowed_mentions=discord.AllowedMentions.none())
+            except discord.HTTPException as erro:
+                print(f'Permissão alterada no canal {canal.id}, mas não consegui enviar a confirmação: {erro}')
+
+    @commands.command()
+    @commands.guild_only()
+    async def trancar(self, ctx):
+        await self.alterar_bloqueio(ctx, True)
+
+    @commands.command()
+    @commands.guild_only()
+    async def destrancar(self, ctx):
+        await self.alterar_bloqueio(ctx, False)
 
 async def setup(bot):
     await bot.add_cog(Moderacao(bot))
